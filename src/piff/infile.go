@@ -109,7 +109,7 @@ func (c *InFile) internalReadChunk(requestedOctetCount int) (InHeader, []byte, e
 	if requestedOctetCount > c.header.octetLength {
 		return InHeader{}, nil, fmt.Errorf("trying to read too much")
 	}
-	skipCount := requestedOctetCount - c.header.octetLength
+	skipCount := c.header.octetLength - requestedOctetCount
 	payload := make([]byte, requestedOctetCount)
 	octetsRead, err := c.inFile.Read(payload)
 	if err != nil {
@@ -120,7 +120,7 @@ func (c *InFile) internalReadChunk(requestedOctetCount int) (InHeader, []byte, e
 	}
 	savedHeader := c.header
 
-	if octetsRead != savedHeader.octetLength {
+	if octetsRead+skipCount != savedHeader.octetLength {
 		return InHeader{}, nil, fmt.Errorf("couldnt read the whole payload")
 	}
 	headerErr := c.readHeader()
