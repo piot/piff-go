@@ -34,6 +34,17 @@ import (
 	"github.com/piot/brook-go/src/instream"
 )
 
+func TypeIDEqual(a [4]byte, b [4]byte) bool {
+	return a == b
+}
+
+func TypeIDEqualString(a [4]byte, b string) bool {
+	return a[0] == b[0] &&
+		a[1] == b[1] &&
+		a[2] == b[2] &&
+		a[3] == b[3]
+}
+
 type InHeader struct {
 	typeID      [4]byte
 	octetLength int
@@ -51,10 +62,24 @@ func (i InHeader) String() string {
 	return fmt.Sprintf("header %v %v", i.TypeIDString(), i.OctetCount())
 }
 
-type InFile struct {
-	inFile *os.File
+type InSeekHeader struct {
 	header InHeader
-	isEOF  bool
+	tell   int64
+}
+
+func (i InSeekHeader) Header() InHeader {
+	return i.header
+}
+
+func (i InSeekHeader) Tell() int64 {
+	return i.tell
+}
+
+type InFile struct {
+	inFile      *os.File
+	header      InHeader
+	isEOF       bool
+	seekHeaders []InSeekHeader
 }
 
 func NewInFile(filename string) (*InFile, error) {
@@ -69,26 +94,126 @@ func NewInFile(filename string) (*InFile, error) {
 	return c, headerErr
 }
 
-func (c *InFile) readHeader() error {
+func (c *InFile) AllHeaders() []InSeekHeader {
+	return c.seekHeaders
+}
+
+func (c *InFile) scanAllChunks() error {
+	beforePosition, tellErr := c.inFile.Seek(0, 1)
+	if tellErr != nil {
+		return tellErr
+	}
+
+	var seekHeaders []InSeekHeader
+	for {
+		tell, tellErr := c.inFile.Seek(0, 1)
+		if tellErr != nil {
+			return tellErr
+		}
+
+		header, headerErr := c.readHeaderInternal()
+		if headerErr != nil {
+			return headerErr
+		}
+		if c.isEOF {
+			break
+		}
+		seekHeader := InSeekHeader{tell: tell, header: header}
+		seekHeaders = append(seekHeaders, seekHeader)
+		c.inFile.Seek(int64(header.octetLength), 1)
+	}
+	c.seekHeaders = seekHeaders
+	c.inFile.Seek(beforePosition, 0)
+	return nil
+}
+
+func (c *InFile) ChunkCount() int {
+	return len(c.seekHeaders)
+}
+
+func (c *InFile) seekToChunk(index int) error {
+	if index >= len(c.seekHeaders) {
+		return fmt.Errorf("I don't have that index %d", index)
+	}
+
+	seekHeader := c.seekHeaders[index]
+	_, seekErr := c.inFile.Seek(seekHeader.tell, 0)
+	if seekErr != nil {
+		return seekErr
+	}
+	return nil
+}
+
+func (c *InFile) seekToChunkAndReadHeader(index int) (InHeader, error) {
+	seekErr := c.seekToChunk(index)
+	if seekErr != nil {
+		return InHeader{}, seekErr
+	}
+	return c.readHeaderInternal()
+}
+
+func (c *InFile) internalRead(requestedOctetCount int) ([]byte, error) {
+	payload := make([]byte, requestedOctetCount)
+	_, err := c.inFile.Read(payload)
+	if err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
+func (c *InFile) FindChunk(index int) (InHeader, []byte, error) {
+	header, headerErr := c.seekToChunkAndReadHeader(index)
+	if headerErr != nil {
+		return InHeader{}, nil, headerErr
+	}
+	payload, payloadErr := c.internalRead(header.octetLength)
+	return header, payload, payloadErr
+}
+
+func (c *InFile) FindPartialChunk(index int, octetCount int) (InHeader, []byte, error) {
+	header, headerErr := c.seekToChunkAndReadHeader(index)
+	if headerErr != nil {
+		return InHeader{}, nil, headerErr
+	}
+	payload, payloadErr := c.internalRead(octetCount)
+	return header, payload, payloadErr
+}
+
+func NewInFileScanChunks(filename string) (*InFile, error) {
+	inFile, err := NewInFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	scanErr := inFile.scanAllChunks()
+	if scanErr != nil {
+		return nil, scanErr
+	}
+
+	return inFile, nil
+}
+
+func (c *InFile) readHeaderInternal() (InHeader, error) {
 	header := make([]byte, 8)
 	octetCount, err := c.inFile.Read(header)
 
 	if err == io.EOF {
 		c.isEOF = true
-		return nil
+		return InHeader{}, nil
 	}
 	if err != nil {
-		return err
+		return InHeader{}, err
 	}
 	if octetCount != 8 {
-		return fmt.Errorf("piff: couldn't read whole header")
+		return InHeader{}, fmt.Errorf("piff: couldn't read whole header")
 	}
 	s := instream.New(header)
+
 	typeID, readErr := s.ReadOctets(4)
 	if readErr != nil {
-		return readErr
+		return InHeader{}, readErr
 	}
-	c.header.typeID = [4]byte{
+	fourCC := [4]byte{
 		typeID[0],
 		typeID[1],
 		typeID[2],
@@ -96,9 +221,17 @@ func (c *InFile) readHeader() error {
 	}
 	chunkOctetCount, countErr := s.ReadUint32()
 	if countErr != nil {
-		return countErr
+		return InHeader{}, countErr
 	}
-	c.header.octetLength = int(chunkOctetCount)
+	return InHeader{octetLength: int(chunkOctetCount), typeID: fourCC}, nil
+}
+
+func (c *InFile) readHeader() error {
+	var err error
+	c.header, err = c.readHeaderInternal()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

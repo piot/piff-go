@@ -69,3 +69,21 @@ func TestReadWrite(t *testing.T) {
 	}
 	i.Close()
 }
+
+func TestAllChunks(t *testing.T) {
+	const testString = "this is a string"
+	const ibdFilename = "test.ibdf"
+	const typeID = "cafe"
+	f, outErr := NewOutFile(ibdFilename)
+	if outErr != nil {
+		t.Fatal(outErr)
+	}
+	writeErr := f.WriteChunkTypeIDString(typeID, []byte(testString))
+	if writeErr != nil {
+		t.Fatal(writeErr)
+	}
+	f.Close()
+
+	i, _ := NewInFileScanChunks(ibdFilename)
+	i.Close()
+}
