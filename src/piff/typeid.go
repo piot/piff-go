@@ -26,54 +26,32 @@ SOFTWARE.
 
 package piff
 
-import (
-	"fmt"
-	"os"
+import "fmt"
 
-	"github.com/piot/brook-go/src/outstream"
-)
+const FileFormatVersion = 0x01
 
-type OutFile struct {
-	outFile *os.File
+type TypeID [4]byte
+
+func (t TypeID) IsEqual(other [4]byte) bool {
+	return t == other
 }
 
-func NewOutFile(filename string) (*OutFile, error) {
-	newFile, err := os.Create(filename)
-	if err != nil {
-		return nil, err
-	}
-	c := &OutFile{
-		outFile: newFile,
-	}
-	return c, nil
+func (t TypeID) IsEqualString(b string) bool {
+	return t[0] == b[0] &&
+		t[1] == b[1] &&
+		t[2] == b[2] &&
+		t[3] == b[3]
 }
 
-func (c *OutFile) WriteChunkTypeIDString(typeID string, payload []byte) error {
-	fixedTypeID := [4]byte{
-		byte(typeID[0]),
-		byte(typeID[1]),
-		byte(typeID[2]),
-		byte(typeID[3]),
+func NewTypeIDFromOctets(payload []byte) (TypeID, error) {
+	if len(payload) != 4 {
+		return TypeID{}, fmt.Errorf("typeid: payload must be exactly four octets.")
 	}
-	return c.WriteChunk(fixedTypeID, payload)
-}
 
-func (c *OutFile) WriteChunk(typeID [4]byte, payload []byte) error {
-	s := outstream.New()
-	typeIDOctets := typeID[0:]
-	if len(typeIDOctets) != 4 {
-		return fmt.Errorf("wrong conversion")
-	}
-	s.WriteOctets(typeIDOctets)
-	octetCount := len(payload)
-	s.WriteUint32(uint32(octetCount))
-	s.WriteOctets(payload)
-	filePayload := s.Octets()
-	c.outFile.Write(filePayload)
-	c.outFile.Sync()
-	return nil
-}
-
-func (c *OutFile) Close() {
-	c.outFile.Close()
+	return TypeID{
+		payload[0],
+		payload[1],
+		payload[2],
+		payload[3],
+	}, nil
 }

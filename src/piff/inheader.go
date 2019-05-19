@@ -26,46 +26,22 @@ SOFTWARE.
 
 package piff
 
-import (
-	"io"
-	"testing"
-)
+import "fmt"
 
-func TestReadWrite(t *testing.T) {
-	const testString = "this is a string"
-	const ibdFilename = "test.ibdf"
-	const typeID = "cafe"
-	f, outErr := NewOutFile(ibdFilename)
-	if outErr != nil {
-		t.Fatal(outErr)
-	}
-	writeErr := f.WriteChunkTypeIDString(typeID, []byte(testString))
-	if writeErr != nil {
-		t.Fatal(writeErr)
-	}
-	f.Close()
+type InHeader struct {
+	typeID      [4]byte
+	octetLength int
+	tell        int64
+}
 
-	i, _ := NewInFile(ibdFilename)
+func (i InHeader) TypeIDString() string {
+	return string(i.typeID[0:])
+}
 
-	header, payload, readErr := i.ReadChunk()
+func (i InHeader) OctetCount() int {
+	return i.octetLength
+}
 
-	if readErr != nil {
-		t.Fatal(readErr)
-	}
-	if header.octetLength != len(testString) {
-		t.Errorf("wrong octet length")
-	}
-
-	if header.typeID[1] != typeID[1] {
-		t.Errorf("wrong typeid")
-	}
-
-	if string(payload) != testString {
-		t.Errorf("wrong string")
-	}
-	_, _, nextReadErr := i.ReadChunk()
-	if nextReadErr != io.EOF {
-		t.Errorf("file should have ended")
-	}
-	i.Close()
+func (i InHeader) String() string {
+	return fmt.Sprintf("[inheader '%v' octetcount:%v]", i.TypeIDString(), i.OctetCount())
 }

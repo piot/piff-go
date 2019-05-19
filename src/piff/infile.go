@@ -29,120 +29,123 @@ package piff
 import (
 	"fmt"
 	"io"
-	"os"
-
-	"github.com/piot/brook-go/src/instream"
 )
 
-type InHeader struct {
-	typeID      [4]byte
-	octetLength int
-}
-
-func (i InHeader) TypeIDString() string {
-	return string(i.typeID[0:])
-}
-
-func (i InHeader) OctetCount() int {
-	return i.octetLength
-}
-
-func (i InHeader) String() string {
-	return fmt.Sprintf("header %v %v", i.TypeIDString(), i.OctetCount())
-}
-
-type InFile struct {
-	inFile *os.File
+type InSeekHeader struct {
 	header InHeader
-	isEOF  bool
 }
 
-func NewInFile(filename string) (*InFile, error) {
-	newFile, err := os.Open(filename)
+func (i InSeekHeader) Header() InHeader {
+	return i.header
+}
+
+func (i InSeekHeader) Tell() int64 {
+	return i.header.tell
+}
+
+func (i InSeekHeader) String() string {
+	return fmt.Sprintf("[inseekheader position:%v subheader:%v]", i.header.tell, i.header)
+}
+
+type InSeeker struct {
+	inFile      *InStream
+	seekHeaders []InSeekHeader
+}
+
+func NewInSeekerFile(filename string) (*InSeeker, error) {
+	newFile, err := NewInStreamFile(filename)
 	if err != nil {
 		return nil, err
 	}
-	c := &InFile{
-		inFile: newFile,
-	}
-	headerErr := c.readHeader()
-	return c, headerErr
+
+	return newInSeekerStream(newFile)
 }
 
-func (c *InFile) readHeader() error {
-	header := make([]byte, 8)
-	octetCount, err := c.inFile.Read(header)
-
-	if err == io.EOF {
-		c.isEOF = true
-		return nil
-	}
+func NewInSeeker(readSeeker io.ReadSeeker) (*InSeeker, error) {
+	newFile, err := NewInStreamReadSeeker(readSeeker)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if octetCount != 8 {
-		return fmt.Errorf("piff: couldn't read whole header")
+
+	return newInSeekerStream(newFile)
+}
+
+func newInSeekerStream(newFile *InStream) (*InSeeker, error) {
+	c := &InSeeker{
+		inFile: newFile,
 	}
-	s := instream.New(header)
-	typeID, readErr := s.ReadOctets(4)
-	if readErr != nil {
-		return readErr
+	scanErr := c.scanAllChunks()
+	if scanErr != nil {
+		return nil, scanErr
 	}
-	c.header.typeID = [4]byte{
-		typeID[0],
-		typeID[1],
-		typeID[2],
-		typeID[3],
+	return c, nil
+}
+
+func (c *InSeeker) AllHeaders() []InSeekHeader {
+	return c.seekHeaders
+}
+
+func (c *InSeeker) scanAllChunks() error {
+	var seekHeaders []InSeekHeader
+	for {
+		header, headerErr := c.inFile.SkipChunk()
+		if headerErr == io.EOF {
+			break
+		}
+		if headerErr != nil {
+			return headerErr
+		}
+
+		seekHeader := InSeekHeader{header: header}
+		seekHeaders = append(seekHeaders, seekHeader)
 	}
-	chunkOctetCount, countErr := s.ReadUint32()
-	if countErr != nil {
-		return countErr
-	}
-	c.header.octetLength = int(chunkOctetCount)
+	c.seekHeaders = seekHeaders
 	return nil
 }
 
-func (c *InFile) internalReadChunk(requestedOctetCount int) (InHeader, []byte, error) {
-	if c.isEOF {
-		return InHeader{}, nil, io.EOF
-	}
-	if requestedOctetCount > c.header.octetLength {
-		return InHeader{}, nil, fmt.Errorf("trying to read too much")
-	}
-	skipCount := c.header.octetLength - requestedOctetCount
-	payload := make([]byte, requestedOctetCount)
-	octetsRead, err := c.inFile.Read(payload)
-	if err != nil {
-		return InHeader{}, nil, err
-	}
-	if skipCount > 0 {
-		c.inFile.Seek(int64(skipCount), 1)
-	}
-	savedHeader := c.header
-
-	if octetsRead+skipCount != savedHeader.octetLength {
-		return InHeader{}, nil, fmt.Errorf("couldnt read the whole payload")
-	}
-	headerErr := c.readHeader()
-	return savedHeader, payload, headerErr
-
+func (c *InSeeker) ChunkCount() int {
+	return len(c.seekHeaders)
 }
 
-func (c *InFile) ReadChunk() (InHeader, []byte, error) {
-	return c.internalReadChunk(c.header.OctetCount())
+func (c *InSeeker) seekToChunk(index int) error {
+	if index >= len(c.seekHeaders) {
+		return fmt.Errorf("I don't have that index %d", index)
+	}
+
+	seekHeader := c.seekHeaders[index]
+	_, seekErr := c.inFile.inStream.Seek(seekHeader.header.tell, 0)
+	if seekErr != nil {
+		return seekErr
+	}
+	return nil
 }
 
-func (c *InFile) SkipChunk() (InHeader, error) {
-	savedHeader := c.header
-	c.inFile.Seek(int64(savedHeader.OctetCount()), 1)
-	headerErr := c.readHeader()
-	return savedHeader, headerErr
+func (c *InSeeker) seekToChunkAndReadHeader(index int) (InHeader, error) {
+	seekErr := c.seekToChunk(index)
+	if seekErr != nil {
+		return InHeader{}, seekErr
+	}
+	return c.inFile.readHeaderInternal()
 }
 
-func (c *InFile) ReadPartChunk(requestedOctetCount int) (InHeader, []byte, error) {
-	return c.internalReadChunk(requestedOctetCount)
+func (c *InSeeker) FindChunk(index int) (InHeader, []byte, error) {
+	header, headerErr := c.seekToChunkAndReadHeader(index)
+	if headerErr != nil {
+		return InHeader{}, nil, headerErr
+	}
+	payload, payloadErr := c.inFile.internalRead(header.octetLength)
+	return header, payload, payloadErr
 }
 
-func (c *InFile) Close() {
+func (c *InSeeker) FindPartialChunk(index int, octetCount int) (InHeader, []byte, error) {
+	header, headerErr := c.seekToChunkAndReadHeader(index)
+	if headerErr != nil {
+		return InHeader{}, nil, headerErr
+	}
+	payload, payloadErr := c.inFile.internalRead(octetCount)
+	return header, payload, payloadErr
+}
+
+func (c *InSeeker) Close() {
 	c.inFile.Close()
 }

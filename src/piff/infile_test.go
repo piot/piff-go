@@ -24,54 +24,50 @@ SOFTWARE.
 
 */
 
-package main
+package piff
 
 import (
-	"encoding/hex"
-	"flag"
 	"fmt"
-	"io"
-	"os"
-
-	"github.com/piot/piff-go/src/piff"
-
-	"github.com/fatih/color"
-
-	"github.com/piot/log-go/src/clog"
+	"testing"
 )
 
-func options() string {
-	var piffFile string
-	flag.StringVar(&piffFile, "filename", "", "file to view")
-	flag.Parse()
-	return piffFile
-}
-
-func run(filename string, log *clog.Log) error {
-	inFile, err := piff.NewInStreamFile(filename)
-	if err != nil {
-		return err
+func TestFetchChunks(t *testing.T) {
+	const ibdFilename = "test2.ibdf"
+	const typeID = "cafe"
+	f, outErr := NewOutStream(ibdFilename)
+	if outErr != nil {
+		t.Fatal(outErr)
 	}
+	const chunksToWrite = 10
 
-	for {
-		header, payload, readErr := inFile.ReadChunk()
-		if readErr == io.EOF {
-			break
+	for i := 0; i < chunksToWrite; i++ {
+		testString := fmt.Sprintf("%02d:chunk", i)
+		writeErr := f.WriteChunkTypeIDString(typeID, []byte(testString))
+		if writeErr != nil {
+			t.Fatal(writeErr)
 		}
-		fmt.Printf("-- %v: octetCount:%v\n", header.TypeIDString(), header.OctetCount())
-		color.Cyan("%v\n", hex.Dump(payload))
 	}
-	return nil
-}
+	f.Close()
 
-func main() {
-	log := clog.DefaultLog()
-	log.Info("Piff viewer")
-	filename := options()
-	err := run(filename, log)
+	i, err := NewInSeekerFile(ibdFilename)
 	if err != nil {
-		log.Err(err)
-		os.Exit(1)
+		t.Error(err)
 	}
-	log.Info("Done!")
+	count := i.ChunkCount()
+	if count != chunksToWrite {
+		t.Errorf("chunk count is wrong %d", count)
+	}
+
+	partial, payload, findErr := i.FindPartialChunk(3, 3)
+	if findErr != nil {
+		t.Error(findErr)
+	}
+	payloadString := string(payload)
+	if payloadString != "03:" {
+		t.Errorf("illegal payload %s", payloadString)
+	}
+	if partial.OctetCount() != 8 {
+		t.Errorf("illegal length:%v", partial)
+	}
+	i.Close()
 }
