@@ -26,54 +26,22 @@ SOFTWARE.
 
 package piff
 
-import (
-	"fmt"
-	"os"
+import "fmt"
 
-	"github.com/piot/brook-go/src/outstream"
-)
-
-type OutFile struct {
-	outFile *os.File
+type InHeader struct {
+	typeID      [4]byte
+	octetLength int
+	tell        int64
 }
 
-func NewOutFile(filename string) (*OutFile, error) {
-	newFile, err := os.Create(filename)
-	if err != nil {
-		return nil, err
-	}
-	c := &OutFile{
-		outFile: newFile,
-	}
-	return c, nil
+func (i InHeader) TypeIDString() string {
+	return string(i.typeID[0:])
 }
 
-func (c *OutFile) WriteChunkTypeIDString(typeID string, payload []byte) error {
-	fixedTypeID := [4]byte{
-		byte(typeID[0]),
-		byte(typeID[1]),
-		byte(typeID[2]),
-		byte(typeID[3]),
-	}
-	return c.WriteChunk(fixedTypeID, payload)
+func (i InHeader) OctetCount() int {
+	return i.octetLength
 }
 
-func (c *OutFile) WriteChunk(typeID [4]byte, payload []byte) error {
-	s := outstream.New()
-	typeIDOctets := typeID[0:]
-	if len(typeIDOctets) != 4 {
-		return fmt.Errorf("wrong conversion")
-	}
-	s.WriteOctets(typeIDOctets)
-	octetCount := len(payload)
-	s.WriteUint32(uint32(octetCount))
-	s.WriteOctets(payload)
-	filePayload := s.Octets()
-	c.outFile.Write(filePayload)
-	c.outFile.Sync()
-	return nil
-}
-
-func (c *OutFile) Close() {
-	c.outFile.Close()
+func (i InHeader) String() string {
+	return fmt.Sprintf("[inheader '%v' octetcount:%v]", i.TypeIDString(), i.OctetCount())
 }

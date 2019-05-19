@@ -27,63 +27,47 @@ SOFTWARE.
 package piff
 
 import (
-	"io"
+	"fmt"
 	"testing"
 )
 
-func TestReadWrite(t *testing.T) {
-	const testString = "this is a string"
-	const ibdFilename = "test.ibdf"
+func TestFetchChunks(t *testing.T) {
+	const ibdFilename = "test2.ibdf"
 	const typeID = "cafe"
-	f, outErr := NewOutFile(ibdFilename)
+	f, outErr := NewOutStream(ibdFilename)
 	if outErr != nil {
 		t.Fatal(outErr)
 	}
-	writeErr := f.WriteChunkTypeIDString(typeID, []byte(testString))
-	if writeErr != nil {
-		t.Fatal(writeErr)
+	const chunksToWrite = 10
+
+	for i := 0; i < chunksToWrite; i++ {
+		testString := fmt.Sprintf("%02d:chunk", i)
+		writeErr := f.WriteChunkTypeIDString(typeID, []byte(testString))
+		if writeErr != nil {
+			t.Fatal(writeErr)
+		}
 	}
 	f.Close()
 
-	i, _ := NewInFile(ibdFilename)
-
-	header, payload, readErr := i.ReadChunk()
-
-	if readErr != nil {
-		t.Fatal(readErr)
+	i, err := NewInSeekerFile(ibdFilename)
+	if err != nil {
+		t.Error(err)
 	}
-	if header.octetLength != len(testString) {
-		t.Errorf("wrong octet length")
+	count := i.ChunkCount()
+	if count != chunksToWrite {
+		t.Errorf("chunk count is wrong %d", count)
 	}
 
-	if header.typeID[1] != typeID[1] {
-		t.Errorf("wrong typeid")
+	partial, payload, findErr := i.FindPartialChunk(3, 3)
+	if findErr != nil {
+		t.Error(findErr)
 	}
-
-	if string(payload) != testString {
-		t.Errorf("wrong string")
+	payloadString := string(payload)
+	if payloadString != "03:" {
+		t.Errorf("illegal payload %s", payloadString)
 	}
-	_, _, nextReadErr := i.ReadChunk()
-	if nextReadErr != io.EOF {
-		t.Errorf("file should have ended")
+	if partial.OctetCount() != 8 {
+		t.Errorf("illegal length:%v", partial)
 	}
-	i.Close()
-}
-
-func TestAllChunks(t *testing.T) {
-	const testString = "this is a string"
-	const ibdFilename = "test.ibdf"
-	const typeID = "cafe"
-	f, outErr := NewOutFile(ibdFilename)
-	if outErr != nil {
-		t.Fatal(outErr)
-	}
-	writeErr := f.WriteChunkTypeIDString(typeID, []byte(testString))
-	if writeErr != nil {
-		t.Fatal(writeErr)
-	}
-	f.Close()
-
-	i, _ := NewInFileScanChunks(ibdFilename)
 	i.Close()
 }

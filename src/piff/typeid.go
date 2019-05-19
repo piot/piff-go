@@ -24,54 +24,34 @@ SOFTWARE.
 
 */
 
-package main
+package piff
 
-import (
-	"encoding/hex"
-	"flag"
-	"fmt"
-	"io"
-	"os"
+import "fmt"
 
-	"github.com/piot/piff-go/src/piff"
+const FileFormatVersion = 0x01
 
-	"github.com/fatih/color"
+type TypeID [4]byte
 
-	"github.com/piot/log-go/src/clog"
-)
-
-func options() string {
-	var piffFile string
-	flag.StringVar(&piffFile, "filename", "", "file to view")
-	flag.Parse()
-	return piffFile
+func (t TypeID) IsEqual(other [4]byte) bool {
+	return t == other
 }
 
-func run(filename string, log *clog.Log) error {
-	inFile, err := piff.NewInStreamFile(filename)
-	if err != nil {
-		return err
-	}
-
-	for {
-		header, payload, readErr := inFile.ReadChunk()
-		if readErr == io.EOF {
-			break
-		}
-		fmt.Printf("-- %v: octetCount:%v\n", header.TypeIDString(), header.OctetCount())
-		color.Cyan("%v\n", hex.Dump(payload))
-	}
-	return nil
+func (t TypeID) IsEqualString(b string) bool {
+	return t[0] == b[0] &&
+		t[1] == b[1] &&
+		t[2] == b[2] &&
+		t[3] == b[3]
 }
 
-func main() {
-	log := clog.DefaultLog()
-	log.Info("Piff viewer")
-	filename := options()
-	err := run(filename, log)
-	if err != nil {
-		log.Err(err)
-		os.Exit(1)
+func NewTypeIDFromOctets(payload []byte) (TypeID, error) {
+	if len(payload) != 4 {
+		return TypeID{}, fmt.Errorf("typeid: payload must be exactly four octets.")
 	}
-	log.Info("Done!")
+
+	return TypeID{
+		payload[0],
+		payload[1],
+		payload[2],
+		payload[3],
+	}, nil
 }

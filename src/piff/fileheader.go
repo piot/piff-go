@@ -24,54 +24,14 @@ SOFTWARE.
 
 */
 
-package main
+package piff
 
-import (
-	"encoding/hex"
-	"flag"
-	"fmt"
-	"io"
-	"os"
-
-	"github.com/piot/piff-go/src/piff"
-
-	"github.com/fatih/color"
-
-	"github.com/piot/log-go/src/clog"
-)
-
-func options() string {
-	var piffFile string
-	flag.StringVar(&piffFile, "filename", "", "file to view")
-	flag.Parse()
-	return piffFile
+func fileFormatHeader() []byte {
+	return []byte{
+		0xF0, 0x9F, 0xA6, 0x95,
+		'P', 'I', 'F', 'F', '\n'}
 }
 
-func run(filename string, log *clog.Log) error {
-	inFile, err := piff.NewInStreamFile(filename)
-	if err != nil {
-		return err
-	}
-
-	for {
-		header, payload, readErr := inFile.ReadChunk()
-		if readErr == io.EOF {
-			break
-		}
-		fmt.Printf("-- %v: octetCount:%v\n", header.TypeIDString(), header.OctetCount())
-		color.Cyan("%v\n", hex.Dump(payload))
-	}
-	return nil
-}
-
-func main() {
-	log := clog.DefaultLog()
-	log.Info("Piff viewer")
-	filename := options()
-	err := run(filename, log)
-	if err != nil {
-		log.Err(err)
-		os.Exit(1)
-	}
-	log.Info("Done!")
+func fileFormatHeaderWithVersion(version byte) []byte {
+	return append(fileFormatHeader(), version)
 }
