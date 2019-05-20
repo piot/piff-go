@@ -165,6 +165,14 @@ func (c *InStream) ReadPartChunk(requestedOctetCount int) (InHeader, []byte, err
 	return c.internalReadChunk(requestedOctetCount)
 }
 
+func (c *InStream) PendingChunkHeader() InHeader {
+	return c.pendingHeader
+}
+
+func (c *InStream) IsEOF() bool {
+	return c.isEOF
+}
+
 func (c *InStream) SkipChunk() (InHeader, error) {
 	if c.isEOF {
 		return InHeader{}, io.EOF
