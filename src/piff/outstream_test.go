@@ -33,7 +33,7 @@ import (
 
 func TestReadWrite(t *testing.T) {
 	const testString = "this is a string"
-	const ibdFilename = "test.ibdf"
+	const ibdFilename = "test.piff"
 	const typeID = "cafe"
 	f, outErr := NewOutStream(ibdFilename)
 	if outErr != nil {
@@ -72,7 +72,7 @@ func TestReadWrite(t *testing.T) {
 
 func TestAllChunks(t *testing.T) {
 	const testString = "this is a string"
-	const ibdFilename = "test.ibdf"
+	const ibdFilename = "test.piff"
 	const typeID = "cafe"
 	f, outErr := NewOutStream(ibdFilename)
 	if outErr != nil {

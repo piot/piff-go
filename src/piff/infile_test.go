@@ -32,7 +32,7 @@ import (
 )
 
 func TestFetchChunks(t *testing.T) {
-	const ibdFilename = "test2.ibdf"
+	const ibdFilename = "test2.piff"
 	const typeID = "cafe"
 	f, outErr := NewOutStream(ibdFilename)
 	if outErr != nil {
