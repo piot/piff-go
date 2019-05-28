@@ -41,14 +41,39 @@ import (
 )
 
 func options() string {
-	var piffFile string
-	flag.StringVar(&piffFile, "filename", "", "file to view")
+	//var piffFile string
+	//	flag.StringVar(&piffFile, "filename", "", "file to view")
 	flag.Parse()
-	return piffFile
+	count := flag.NArg()
+	if count < 1 {
+		return ""
+	}
+	ibdfFilename := flag.Arg(0)
+	return ibdfFilename
+}
+
+func openReadSeeker(filename string) (io.ReadSeeker, error) {
+	var seekerToUse io.ReadSeeker
+	if filename == "" {
+		seekerToUse = os.Stdin
+	} else {
+		newFile, err := os.Open(filename)
+		if err != nil {
+			return nil, err
+		}
+		seekerToUse = newFile
+	}
+
+	return seekerToUse, nil
 }
 
 func run(filename string, log *clog.Log) error {
-	inFile, err := piff.NewInStreamFile(filename)
+	seekerToUse, seekerErr := openReadSeeker(filename)
+	if seekerErr != nil {
+		return seekerErr
+	}
+
+	inFile, err := piff.NewInStreamReadSeeker(seekerToUse)
 	if err != nil {
 		return err
 	}
