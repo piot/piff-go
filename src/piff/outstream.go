@@ -35,7 +35,8 @@ import (
 )
 
 type OutStream struct {
-	outFile *os.File
+	writer io.Writer
+	file   *os.File
 }
 
 func writeFileHeader(writer io.Writer) error {
@@ -49,13 +50,28 @@ func NewOutStream(filename string) (*OutStream, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return NewOutStreamFile(newFile)
+}
+
+func NewOutStreamWriter(writer io.Writer) (*OutStream, error) {
 	c := &OutStream{
-		outFile: newFile,
+		writer: writer,
 	}
-	writeFileHeaderErr := writeFileHeader(newFile)
+	writeFileHeaderErr := writeFileHeader(writer)
 	if writeFileHeaderErr != nil {
 		return nil, writeFileHeaderErr
 	}
+	return c, nil
+}
+
+func NewOutStreamFile(file *os.File) (*OutStream, error) {
+	c, newErr := NewOutStreamWriter(file)
+	if newErr != nil {
+		return nil, newErr
+	}
+	c.file = file
+
 	return c, nil
 }
 
@@ -80,11 +96,15 @@ func (c *OutStream) WriteChunk(typeID TypeID, payload []byte) error {
 	s.WriteUint32(uint32(octetCount))
 	s.WriteOctets(payload)
 	filePayload := s.Octets()
-	c.outFile.Write(filePayload)
-	c.outFile.Sync()
+	c.writer.Write(filePayload)
+	if c.file != nil {
+		c.file.Sync()
+	}
 	return nil
 }
 
 func (c *OutStream) Close() {
-	c.outFile.Close()
+	if c.file != nil {
+		c.file.Close()
+	}
 }
