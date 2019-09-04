@@ -55,10 +55,10 @@ func verifyFileHeader(reader io.Reader) error {
 	fileHeaderPayload := make([]byte, len(expectedHeader))
 	_, readErr := reader.Read(fileHeaderPayload)
 	if readErr != nil {
-		return fmt.Errorf("couldnt read file pendingHeader %v", readErr)
+		return fmt.Errorf("piff: couldnt read file header %v", readErr)
 	}
 	if !bytes.Equal(fileHeaderPayload, expectedHeader) {
-		return fmt.Errorf("unexpected file format pendingHeader")
+		return fmt.Errorf("piff: not a valid piff file header")
 	}
 
 	return nil
