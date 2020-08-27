@@ -28,10 +28,13 @@ package piff
 
 import "fmt"
 
+type ChunkIndex uint64
+
 type InHeader struct {
 	typeID      [4]byte
 	octetLength int
 	tell        int64
+	chunkIndex  ChunkIndex
 }
 
 func (i InHeader) TypeIDString() string {
@@ -42,6 +45,10 @@ func (i InHeader) OctetCount() int {
 	return i.octetLength
 }
 
+func (i InHeader) ChunkIndex() ChunkIndex {
+	return i.chunkIndex
+}
+
 func (i InHeader) String() string {
-	return fmt.Sprintf("[inheader '%v' octetcount:%v]", i.TypeIDString(), i.OctetCount())
+	return fmt.Sprintf("[inheader '%v' octetcount:%v index:%v]", i.TypeIDString(), i.OctetCount(), i.ChunkIndex())
 }

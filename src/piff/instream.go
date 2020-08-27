@@ -40,6 +40,7 @@ type InStream struct {
 	pendingHeader InHeader
 	isEOF         bool
 	seekHeaders   []InSeekHeader
+	chunkIndex    ChunkIndex
 }
 
 func NewInStreamFile(filename string) (*InStream, error) {
@@ -115,7 +116,7 @@ func (c *InStream) readHeaderInternal() (InHeader, error) {
 	if countErr != nil {
 		return InHeader{}, countErr
 	}
-	return InHeader{octetLength: int(chunkOctetCount), typeID: fourCC, tell: tell}, nil
+	return InHeader{octetLength: int(chunkOctetCount), typeID: fourCC, tell: tell, chunkIndex: c.chunkIndex}, nil
 }
 
 func (c *InStream) readHeader() error {
@@ -153,6 +154,7 @@ func (c *InStream) internalReadChunk(requestedOctetCount int) (InHeader, []byte,
 	if octetsRead+skipCount != savedHeader.octetLength {
 		return InHeader{}, nil, fmt.Errorf("couldnt read the whole payload read:%v, skip:%v expected:%v", octetsRead, skipCount, savedHeader.octetLength)
 	}
+	c.chunkIndex++
 	headerErr := c.readHeader()
 	return savedHeader, payload, headerErr
 }
@@ -179,6 +181,7 @@ func (c *InStream) SkipChunk() (InHeader, error) {
 	}
 	savedHeader := c.pendingHeader
 	c.inStream.Seek(int64(savedHeader.OctetCount()), 1)
+	c.chunkIndex++
 	headerErr := c.readHeader()
 	return savedHeader, headerErr
 }

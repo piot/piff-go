@@ -38,6 +38,7 @@ import (
 	"github.com/fatih/color"
 
 	"encoding/base64"
+
 	"github.com/piot/log-go/src/clog"
 )
 
@@ -84,12 +85,12 @@ func run(filename string, log *clog.Log) error {
 		if readErr == io.EOF {
 			break
 		}
-		fmt.Printf("-- %v: octetCount:%v\n", header.TypeIDString(), header.OctetCount())
+		fmt.Printf("-- %v: octetCount:%v index:%v\n", header.TypeIDString(), header.OctetCount(), header.ChunkIndex())
 		color.Cyan("%v\n", hex.Dump(payload))
 		base64String := base64.StdEncoding.EncodeToString(payload)
 		color.Blue("%v\n", base64String)
-
 	}
+
 	return nil
 }
 
